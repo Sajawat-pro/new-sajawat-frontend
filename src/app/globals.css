@@ -1,26 +1,171 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+.intro-text {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 800;
+  font-size: clamp(3.5rem, 18vw, 15rem);
+  line-height: 0.85;
+  letter-spacing: -0.02em;
+  text-align: center;
+  white-space: nowrap;
+  background-image: url("/images/intro/collage.jpg");
+  background-size: 160%;
+  background-position: 50% 60%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: intro-pan 2.8s ease-in-out forwards;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  opacity: 0;
+  animation: fadeUp 0.6s ease-out forwards;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+
+@keyframes intro-pan {
+  0% {
+    background-size: 170%;
+    background-position: 50% 65%;
+  }
+  100% {
+    background-size: 115%;
+    background-position: 50% 50%;
   }
 }
 
+
+* {
+  box-sizing: border-box;
+
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #8b5cf6 transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--background);
+}
+
 body {
+  margin: 0;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+
+  /* Apple-like website font */
+  font-family:
+    var(--font-main),
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+
+  font-weight: 400;
+  letter-spacing: -0.015em;
+
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ================================
+   CHROME, EDGE AND SAFARI SCROLLBAR
+================================ */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+
+  background: linear-gradient(
+    180deg,
+    var(--scrollbar-start),
+    var(--scrollbar-middle),
+    var(--scrollbar-end),
+    var(--scrollbar-middle),
+    var(--scrollbar-start)
+  );
+
+  background-size: 100% 250%;
+  background-position: 0 0;
+
+  border-radius: 999px;
+  border: none;
+
+  transition:
+    background 300ms ease,
+    box-shadow 300ms ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    #171717,
+    #7c3aed,
+    #f43f5e
+  );
+
+  box-shadow:
+    0 0 6px rgba(139, 92, 246, 0.8),
+    0 0 12px rgba(236, 72, 153, 0.55);
+}
+
+/* Runs only while the user is scrolling */
+html.is-scrolling::-webkit-scrollbar-thumb {
+  animation: scrollbarFlow 700ms linear infinite;
+
+  box-shadow:
+    0 0 7px rgba(139, 92, 246, 0.8),
+    0 0 14px rgba(236, 72, 153, 0.55);
+}
+
+@keyframes scrollbarFlow {
+  from {
+    background-position: 0 0%;
+  }
+
+  to {
+    background-position: 0 200%;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  html.is-scrolling::-webkit-scrollbar-thumb {
+    animation: none;
+  }
 }
