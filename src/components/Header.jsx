@@ -1,6 +1,7 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/MediaImage";
+import { useToast } from "@/components/ToastProvider";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -8,7 +9,7 @@ const BAG_STORAGE_KEY = "sajawat-bag";
 
 const announcementMessages = [
   "Free Delivery | No Shipping Cost",
-  "Brand Opening Sale Is Live",
+  "Thoughtful details for beautiful homes",
   "Beautiful Décor, Made for Every Home",
   "Secure Payments | Carefully Packed",
 ];
@@ -16,7 +17,8 @@ const announcementMessages = [
 function getStoredBag() {
   try {
     const storedBag = localStorage.getItem(BAG_STORAGE_KEY);
-    return storedBag ? JSON.parse(storedBag) : [];
+    const parsed = storedBag ? JSON.parse(storedBag) : [];
+    return Array.isArray(parsed) ? parsed.filter(item => item && Number.isFinite(Number(item.quantity))) : [];
   } catch {
     return [];
   }
@@ -30,6 +32,7 @@ function formatPrice(price) {
 }
 
 export default function Header() {
+  const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
   const [bagItems, setBagItems] = useState([]);
@@ -51,8 +54,11 @@ export default function Header() {
   );
 
   useEffect(() => {
-    setBagItems(getStoredBag());
-    setLoggedIn(localStorage.getItem("userLogin") === "true");
+    queueMicrotask(() => setBagItems(getStoredBag()));
+    const controller = new AbortController();
+    fetch("/api/auth/me", { cache: "no-store", signal: controller.signal }).then(response => setLoggedIn(response.ok)).catch(() => {});
+    const syncBag = () => setBagItems(getStoredBag());
+    window.addEventListener("bag-state-changed", syncBag);
 
     const handleBagUpdated = (event) => {
       const updatedBag = event.detail || getStoredBag();
@@ -82,6 +88,8 @@ export default function Header() {
     window.addEventListener("storage", handleStorageUpdate);
 
     return () => {
+      controller.abort();
+      window.removeEventListener("bag-state-changed", syncBag);
       clearTimeout(bagAnimationTimer.current);
       window.removeEventListener("bag-updated", handleBagUpdated);
       window.removeEventListener("storage", handleStorageUpdate);
@@ -121,7 +129,7 @@ export default function Header() {
 
   const updateBag = (updatedBag) => {
     setBagItems(updatedBag);
-    localStorage.setItem(BAG_STORAGE_KEY, JSON.stringify(updatedBag));
+    try { localStorage.setItem(BAG_STORAGE_KEY, JSON.stringify(updatedBag)); } catch { toast("Unable to save your bag. Please enable browser storage.", "error"); return; }
 
     window.dispatchEvent(
       new CustomEvent("bag-state-changed", {
@@ -136,7 +144,7 @@ export default function Header() {
         item.id === itemId
           ? {
               ...item,
-              quantity: Math.max(0, item.quantity + change),
+              quantity: Math.min(10, Math.max(0, Number(item.quantity) + change)),
             }
           : item
       )
@@ -211,7 +219,7 @@ export default function Header() {
             </Link>
 
             <Link
-              href="/products?collection=Wooden"
+              href="/products"
               className="fade-up relative py-2 after:absolute after:bottom-0 after:left-0 after:h-px after:w-full after:origin-right after:scale-x-0 after:bg-current after:transition-transform after:duration-300 hover:after:origin-left hover:after:scale-x-100"
               style={{ animationDelay: "0.35s" }}
             >
@@ -219,7 +227,7 @@ export default function Header() {
             </Link>
 
             <Link
-              href="/products?collection=LED"
+              href="/products"
               className="fade-up relative py-2 after:absolute after:bottom-0 after:left-0 after:h-px after:w-full after:origin-right after:scale-x-0 after:bg-current after:transition-transform after:duration-300 hover:after:origin-left hover:after:scale-x-100"
               style={{ animationDelay: "0.4s" }}
             >
@@ -333,7 +341,7 @@ export default function Header() {
               </Link>
 
               <Link
-                href="/products?collection=Wooden"
+                href="/products"
                 onClick={closeMenu}
                 className="border-b border-black/5 py-3"
               >
@@ -341,7 +349,7 @@ export default function Header() {
               </Link>
 
               <Link
-                href="/products?collection=LED"
+                href="/products"
                 onClick={closeMenu}
                 className="border-b border-black/5 py-3"
               >

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/MediaImage";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -27,7 +27,7 @@ function LoginContent() {
   const requestedPath = searchParams.get("next");
 
   const destination =
-    requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+    requestedPath?.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.includes("\\")
       ? requestedPath
       : "/";
 

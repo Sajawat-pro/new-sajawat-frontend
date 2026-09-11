@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertSameOrigin, readJson, apiError, HttpError } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -6,20 +7,22 @@ const SESSION_DURATION = 60 * 60 * 24 * 5 * 1000;
 
 export async function POST(request) {
   try {
+    assertSameOrigin(request);
     const { adminAuth } = await import("@/lib/firebaseAdmin");
     const { default: connectMongoDB } = await import("@/lib/mongodb");
     const { default: User } = await import("@/models/User");
 
-    const { idToken } = await request.json();
+    const { idToken } = await readJson(request);
 
-    if (!idToken) {
+    if (typeof idToken !== "string" || idToken.length > 10000) {
       return NextResponse.json(
         { message: "Firebase ID token is required." },
         { status: 400 }
       );
     }
 
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    const decodedToken = await adminAuth.verifyIdToken(idToken, true);
+    if (!decodedToken.email) throw new HttpError(400, "This account needs an email address.");
 
     const currentTime = Math.floor(Date.now() / 1000);
 
@@ -85,7 +88,8 @@ export async function POST(request) {
 
     return response;
   } catch (error) {
-    console.error("Session creation error:", error);
+    if (error instanceof HttpError) return apiError(error);
+    console.error("Session creation error:", { code: error.code });
 
     return NextResponse.json(
       { message: "Unable to complete login." },

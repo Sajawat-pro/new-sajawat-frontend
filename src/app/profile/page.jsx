@@ -1,154 +1,21 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-function formatPrice(price) {
-  return `₹${Number(price || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function formatDate(dateString) {
-  return new Date(dateString).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
+import { clientApi } from "@/lib/clientApi";
+const money = value => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(value || 0));
 export default function ProfilePage() {
+  const [user, setUser] = useState(null), [data, setData] = useState(null), [page, setPage] = useState(1), [retry, setRetry] = useState(0);
+  const [loading, setLoading] = useState(true), [error, setError] = useState("");
   const router = useRouter();
-
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [orders, setOrders] = useState([]);
-  const [error, setError] = useState("");
-
   useEffect(() => {
-    const load = async () => {
-      if (localStorage.getItem("userLogin") !== "true") {
-        router.replace("/login?next=/profile");
-        return;
-      }
-
-      try {
-        const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
-
-        if (!meResponse.ok) {
-          localStorage.removeItem("userLogin");
-          router.replace("/login?next=/profile");
-          return;
-        }
-
-        const meData = await meResponse.json();
-        setUser(meData.user);
-
-        const ordersResponse = await fetch("/api/orders", {
-          cache: "no-store",
-        });
-
-        if (ordersResponse.ok) {
-          const ordersData = await ordersResponse.json();
-          setOrders(ordersData.orders || []);
-        }
-      } catch {
-        setError("Unable to load your profile right now.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [router]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-black/15 border-t-[#2b2b28]" />
-        <p className="text-sm text-[#6b6a65]">Loading your profile...</p>
-      </div>
-    );
-  }
-
-  return (
-    <main className="mx-auto max-w-3xl px-5 py-12 sm:px-8 lg:py-16">
-      <div className="mb-10 flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#2b2b28] text-lg font-medium text-white">
-          {(user?.name || user?.email || "?").charAt(0).toUpperCase()}
-        </div>
-
-        <div>
-          <h1 className="text-2xl font-medium">
-            {user?.name || "Your Account"}
-          </h1>
-          <p className="text-sm text-[#6b6a65]">{user?.email}</p>
-        </div>
-      </div>
-
-      <h2 className="mb-5 text-lg font-medium">Your Orders</h2>
-
-      {error && (
-        <div
-          role="alert"
-          className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {error}
-        </div>
-      )}
-
-      {orders.length === 0 ? (
-        <div className="border border-black/10 bg-white/30 p-10 text-center">
-          <p className="mb-5 text-sm text-[#6b6a65]">
-            You haven&apos;t placed any orders yet.
-          </p>
-          <Link
-            href="/products"
-            className="inline-block bg-[#2b2b28] px-6 py-3 text-sm font-medium text-white hover:bg-black"
-          >
-            Start Shopping
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <div
-              key={order.orderNumber}
-              className="border border-black/10 bg-white/30 p-5 sm:p-6"
-            >
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">
-                    Order #{order.orderNumber}
-                  </p>
-                  <p className="text-xs text-[#6b6a65]">
-                    {formatDate(order.createdAt)}
-                  </p>
-                </div>
-
-                <span className="rounded-full border border-black/15 px-3 py-1 text-xs capitalize">
-                  {order.orderStatus || "placed"}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-sm">
-                {order.items?.map((item, i) => (
-                  <p key={i} className="text-[#6b6a65]">
-                    {item.quantity} × {item.name}
-                    {item.size ? ` (${item.size})` : ""}
-                  </p>
-                ))}
-              </div>
-
-              <p className="mt-3 text-sm font-medium">
-                Total: {formatPrice(order.total)}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </main>
-  );
+    const controller = new AbortController();
+    Promise.all([clientApi("/api/auth/me", { signal: controller.signal }), clientApi("/api/orders?page=" + page, { signal: controller.signal })])
+      .then(([me, orders]) => { setUser(me.user); setData(orders); setError(""); })
+      .catch(error => { if (error.name === "AbortError") return; if (error.status === 401) router.replace("/login?next=/profile"); else setError(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [page, retry, router]);
+  function refresh() { setLoading(true); setRetry(value => value + 1); }
+  return <div className="mx-auto max-w-3xl px-5 py-14"><div className="mb-9 flex items-center justify-between"><div><p className="mb-2 text-xs uppercase tracking-widest text-[#89997a]">Your Sajawat account</p><h1 className="text-3xl">{user?.name || "Your orders"}</h1><p className="mt-2 text-sm text-[#8d9784]">{user?.email}</p></div><button onClick={refresh} disabled={loading} className="rounded-lg border border-black/15 px-4 py-2 text-xs disabled:opacity-50">Refresh</button></div>{error && <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}<button onClick={refresh} className="ml-3 underline">Try again</button></div>}{loading ? <div role="status" className="flex justify-center py-20"><span className="spinner" /></div> : data?.orders.length === 0 ? <div className="rounded-xl border border-black/10 p-12 text-center"><p className="mb-5 text-sm">Your first beautiful find is waiting.</p><Link href="/products" className="rounded-lg bg-[#314b38] px-6 py-3 text-sm text-white">Explore the collection</Link></div> : <div className="space-y-5">{data?.orders.map(order => <article key={order._id} className="rounded-xl border border-[#dfe5d7] bg-white/50 p-6"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-medium">{order.orderNumber}</h2><p className="mt-1 text-xs text-[#929c87]">{new Date(order.createdAt).toLocaleDateString("en-IN")}</p></div><span className="rounded-full bg-[#e9efdf] px-3 py-1 text-xs capitalize text-[#657c51]">{order.orderStatus.replaceAll("_", " ")}</span></div><div className="space-y-2">{order.items.map((item, i) => <Link href={"/products/" + item.slug} key={i} className="block text-sm text-[#78886a]">{item.quantity} × {item.name} · {item.size}</Link>)}</div><dl className="mt-5 grid grid-cols-2 gap-3 border-t border-black/10 pt-4 text-xs"><div><dt className="text-[#8a987b]">Order total</dt><dd className="mt-1 font-medium">{money(order.total)}</dd></div><div><dt className="text-[#8a987b]">Payment</dt><dd className="mt-1 capitalize">{order.paymentStatus.replaceAll("_", " ")}</dd></div><div><dt className="text-[#8a987b]">Received</dt><dd className="mt-1">{money(order.amountPaid)}</dd></div><div><dt className="text-[#8a987b]">Balance on order</dt><dd className="mt-1">{money(Math.max(0, order.total - (order.amountPaid || 0)))}</dd></div>{order.amountRefunded > 0 && <div><dt className="text-[#8a987b]">Refunded</dt><dd>{money(order.amountRefunded)}</dd></div>}</dl><p className="mt-4 text-xs text-[#8a987b]">Delivery: {order.shippingAddress.addressLine1}, {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.pincode}</p>{order.trackingNumber && <p className="mt-3 text-xs">{order.courier} · Tracking: <strong>{order.trackingNumber}</strong></p>}{order.cashfreeOrderId && <Link className="mt-4 inline-block text-xs underline" href={"/payment-return?cf_order_id=" + encodeURIComponent(order.cashfreeOrderId)}>View payment status →</Link>}</article>)}</div>}{data?.pages > 1 && <div className="mt-8 flex items-center justify-between text-xs"><button disabled={page <= 1 || loading} onClick={() => { setPage(value => value - 1); setLoading(true); }} className="rounded border border-black/15 px-4 py-2 disabled:opacity-40">Previous</button><span>Page {page} of {data.pages}</span><button disabled={page >= data.pages || loading} onClick={() => { setPage(value => value + 1); setLoading(true); }} className="rounded border border-black/15 px-4 py-2 disabled:opacity-40">Next</button></div>}</div>;
 }

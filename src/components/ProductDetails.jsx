@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import Image from "@/components/MediaImage";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
-import { getRelatedProducts } from "@/data/products";
+import { useToast } from "@/components/ToastProvider";
 
 const BAG_STORAGE_KEY = "sajawat-bag";
 
@@ -69,7 +69,8 @@ function Accordion({ title, children, defaultOpen = false }) {
   );
 }
 
-export default function ProductDetails({ product }) {
+export default function ProductDetails({ product, relatedProducts = [] }) {
+  const toast = useToast();
   const [activeImage, setActiveImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState(
     product.sizes?.[1] || product.sizes?.[0]
@@ -79,7 +80,7 @@ export default function ProductDetails({ product }) {
   const [addedToBag, setAddedToBag] = useState(false);
 
   const addedTimer = useRef(null);
-  const relatedProducts = getRelatedProducts(product);
+
 
   const discountPercentage = product.oldPrice
     ? Math.round(
@@ -123,6 +124,7 @@ export default function ProductDetails({ product }) {
       currentBag = [];
     }
 
+    if (!Array.isArray(currentBag)) currentBag = [];
     const bagItemId = `${product.id}-${selectedSize}`;
 
     const existingItemIndex = currentBag.findIndex(
@@ -136,7 +138,7 @@ export default function ProductDetails({ product }) {
         index === existingItemIndex
           ? {
               ...item,
-              quantity: item.quantity + quantity,
+              quantity: Math.min(10, Number(item.quantity) + quantity),
             }
           : item
       );
@@ -157,7 +159,8 @@ export default function ProductDetails({ product }) {
       ];
     }
 
-    localStorage.setItem(BAG_STORAGE_KEY, JSON.stringify(updatedBag));
+    try { localStorage.setItem(BAG_STORAGE_KEY, JSON.stringify(updatedBag)); } catch { toast("Your browser could not save the bag. Please allow local storage and retry.", "error"); return; }
+    toast("Added to your shopping bag.");
 
     window.dispatchEvent(
       new CustomEvent("bag-updated", {
@@ -245,7 +248,7 @@ export default function ProductDetails({ product }) {
             <Stars rating={product.rating} />
 
             <span className="text-xs text-[#6b6a65]">
-              {product.rating} ({product.reviewCount} reviews)
+              {product.reviewCount > 0 ? `${product.rating} (${product.reviewCount} reviews)` : "No reviews yet"}
             </span>
           </div>
 
@@ -434,7 +437,7 @@ export default function ProductDetails({ product }) {
             <Stars rating={product.rating} />
 
             <span className="text-sm text-[#6b6a65]">
-              {product.rating} out of 5 ({product.reviewCount})
+              {product.reviewCount > 0 ? `${product.rating} out of 5 (${product.reviewCount})` : "No reviews yet"}
             </span>
           </div>
         </div>

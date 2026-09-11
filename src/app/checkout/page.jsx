@@ -1,651 +1,118 @@
 "use client";
-
-import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  GoogleAuthProvider,
-  inMemoryPersistence,
-  setPersistence,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-} from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebaseClient";
+import Image from "@/components/MediaImage";
+import StoreOffers from "@/components/StoreOffers";
+import { clientApi } from "@/lib/clientApi";
+import { useToast } from "@/components/ToastProvider";
 
-const BAG_STORAGE_KEY = "sajawat-bag";
-
-function formatPrice(price) {
-  return `₹${Number(price || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
+const money = value => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(value || 0));
+const bagKey = "sajawat-bag";
 export default function CheckoutPage() {
-  const router = useRouter();
-
-  const [checking, setChecking] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [bagItems, setBagItems] = useState([]);
-  const [error, setError] = useState("");
-
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalError, setModalError] = useState("");
-  const [modalEmail, setModalEmail] = useState("");
-  const [modalPassword, setModalPassword] = useState("");
-
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    addressLine1: "",
-    addressLine2: "",
-    city: "",
-    state: "",
-    pincode: "",
-  });
-
-  const subtotal = bagItems.reduce(
-    (sum, item) => sum + Number(item.price) * Number(item.quantity),
-    0
-  );
-
-  const fetchAndFillUser = async () => {
-    const response = await fetch("/api/auth/me", {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error("Not authenticated");
-    }
-
-    const data = await response.json();
-
-    setForm((current) => ({
-      ...current,
-      name: data.user.name || "",
-      email: data.user.email || "",
-    }));
-  };
-
+  const router = useRouter(), toast = useToast(), submittingRef = useRef(false);
+  const [checking, setChecking] = useState(true), [submitting, setSubmitting] = useState(false);
+  const [user, setUser] = useState(null), [bag, setBag] = useState([]), [quote, setQuote] = useState(null);
+  const [error, setError] = useState(""), [quoteLoading, setQuoteLoading] = useState(false), [offerCode, setOfferCode] = useState("");
+  const [paymentOption, setPaymentOption] = useState("advance_99");
+  const [form, setForm] = useState({ name: "", email: "", phone: "", addressLine1: "", addressLine2: "", city: "", state: "", pincode: "" });
+  const quoteRequest = useRef(0);
+  const loadQuote = useCallback(async (items, code = "") => {
+    const sequence = ++quoteRequest.current;
+    setQuoteLoading(true);
+    try {
+      const result = await clientApi("/api/checkout/quote", { method: "POST", body: JSON.stringify({ items, offerCode: code }) });
+      if (sequence !== quoteRequest.current) return;
+      setQuote(result); setError(""); if (code) toast("Offer applied successfully.");
+    } catch (error) {
+      if (sequence !== quoteRequest.current) return;
+      setError(error.message); toast(error.message, "error");
+    } finally { if (sequence === quoteRequest.current) setQuoteLoading(false); }
+  }, [toast]);
   useEffect(() => {
-    const init = async () => {
-      let items = [];
-
+    let active = true;
+    async function initialise() {
       try {
-        const storedBag = localStorage.getItem(BAG_STORAGE_KEY);
-        items = storedBag ? JSON.parse(storedBag) : [];
-      } catch {
-        items = [];
-      }
-
-      if (!Array.isArray(items) || items.length === 0) {
-        router.replace("/products");
-        return;
-      }
-
-      setBagItems(items);
-
-      const isLoggedIn = localStorage.getItem("userLogin") === "true";
-
-      if (!isLoggedIn) {
-        setShowLoginModal(true);
-        setChecking(false);
-        return;
-      }
-
+        const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
+        if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
+        const items = stored.map(item => ({ productId: item.productId || String(item.id).split("-")[0], size: item.size, quantity: Number(item.quantity) }));
+        if (!active) return;
+        setBag(items);
+        await loadQuote(items);
+        try {
+          const result = await clientApi("/api/auth/me");
+          if (!active) return;
+          setUser(result.user);
+          setForm(current => ({ ...current, name: result.user.name || "", email: result.user.email || "" }));
+        } catch (error) { if (error.status !== 401) throw error; }
+      } catch (error) { if (active) setError(error.message || "Unable to prepare checkout. Please update your bag."); }
+      finally { if (active) setChecking(false); }
+    }
+    initialise();
+    return () => { active = false; };
+  }, [router, loadQuote]);
+  useEffect(() => {
+    function syncBag() {
+      if (submittingRef.current) return;
       try {
-        await fetchAndFillUser();
-        setChecking(false);
-      } catch {
-        localStorage.removeItem("userLogin");
-        setShowLoginModal(true);
-        setChecking(false);
-      }
-    };
-
-    init();
-  }, [router]);
-
-  const completeModalLogin = async (idToken) => {
-    const response = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ idToken }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Unable to complete login.");
+        const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
+        if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
+        const items = stored.map(item => ({ productId: item.productId || String(item.id).split("-")[0], size: item.size, quantity: Number(item.quantity) }));
+        setBag(items); loadQuote(items, quote?.offerCode || "");
+      } catch { setError("Your bag could not be read. Please reload checkout."); }
     }
-
-    await signOut(firebaseAuth);
-
-    localStorage.setItem("userLogin", "true");
-
-    await fetchAndFillUser();
-
-    setShowLoginModal(false);
-  };
-
-  const handleModalEmailLogin = async (event) => {
-    event.preventDefault();
-
-    try {
-      setModalLoading(true);
-      setModalError("");
-
-      await setPersistence(firebaseAuth, inMemoryPersistence);
-
-      const result = await signInWithEmailAndPassword(
-        firebaseAuth,
-        modalEmail,
-        modalPassword
-      );
-
-      const idToken = await result.user.getIdToken(true);
-
-      await completeModalLogin(idToken);
-    } catch (loginError) {
-      console.error(loginError);
-
-      if (
-        loginError.code === "auth/invalid-credential" ||
-        loginError.code === "auth/wrong-password" ||
-        loginError.code === "auth/user-not-found"
-      ) {
-        setModalError("Incorrect email or password.");
-      } else {
-        setModalError(
-          loginError.message || "Something went wrong. Please try again."
-        );
-      }
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleModalGoogleLogin = async () => {
-    try {
-      setModalLoading(true);
-      setModalError("");
-
-      await setPersistence(firebaseAuth, inMemoryPersistence);
-
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: "select_account",
-      });
-
-      const result = await signInWithPopup(firebaseAuth, provider);
-      const idToken = await result.user.getIdToken(true);
-
-      await completeModalLogin(idToken);
-    } catch (loginError) {
-      console.error(loginError);
-
-      if (loginError.code === "auth/popup-closed-by-user") {
-        setModalError("Google sign-in was cancelled.");
-      } else if (loginError.code === "auth/popup-blocked") {
-        setModalError("Please allow pop-ups and try again.");
-      } else {
-        setModalError(
-          loginError.message || "Something went wrong. Please try again."
-        );
-      }
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-
-    let cleanValue = value;
-
-    if (name === "phone") {
-      cleanValue = value.replace(/\D/g, "").slice(0, 10);
-    }
-
-    if (name === "pincode") {
-      cleanValue = value.replace(/\D/g, "").slice(0, 6);
-    }
-
-    setForm((current) => ({
-      ...current,
-      [name]: cleanValue,
-    }));
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (localStorage.getItem("userLogin") !== "true") {
-      setShowLoginModal(true);
-      return;
-    }
-
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          name: form.name,
-          phone: form.phone,
-
-          shippingAddress: {
-            addressLine1: form.addressLine1,
-            addressLine2: form.addressLine2,
-            city: form.city,
-            state: form.state,
-            pincode: form.pincode,
-          },
-
-          items: bagItems.map((item) => ({
-            productId: item.productId || String(item.id).split("-")[0],
-            size: item.size,
-            quantity: item.quantity,
-          })),
-
-          paymentMethod: "cod",
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.status === 401) {
-        localStorage.removeItem("userLogin");
-        setSubmitting(false);
-        setShowLoginModal(true);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to place order.");
-      }
-
-      localStorage.removeItem(BAG_STORAGE_KEY);
-
-      window.location.assign(
-        `/order-success?order=${encodeURIComponent(data.orderNumber)}`
-      );
-    } catch (submitError) {
-      setError(
-        submitError.message || "Unable to place your order. Please try again."
-      );
-      setSubmitting(false);
-    }
-  };
-
-  if (checking) {
-    return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-black/15 border-t-[#2b2b28]" />
-        <p className="text-sm text-[#6b6a65]">Preparing your checkout...</p>
-      </div>
-    );
+    const storage = event => { if (event.key === bagKey) syncBag(); };
+    window.addEventListener("bag-state-changed", syncBag); window.addEventListener("storage", storage);
+    return () => { window.removeEventListener("bag-state-changed", syncBag); window.removeEventListener("storage", storage); };
+  }, [loadQuote, quote?.offerCode, router]);
+  const total = quote?.total || 0;
+  const advance = Math.min(99, total), payable = paymentOption === "advance_99" ? advance : total;
+  const balance = Math.max(0, total - payable);
+  function change(event) {
+    const { name } = event.target;
+    let value = event.target.value;
+    if (name === "phone" || name === "pincode") value = value.replace(/\D/g, "").slice(0, name === "phone" ? 10 : 6);
+    setForm(current => ({ ...current, [name]: value }));
   }
-
-  return (
-    <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:py-16">
-      {showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-5">
-          <div className="w-full max-w-md bg-white p-8">
-            <h2 className="mb-2 text-2xl font-medium">Sign in to continue</h2>
-            <p className="mb-6 text-sm text-[#6b6a65]">
-              Please sign in to complete your checkout.
-            </p>
-
-            {modalError && (
-              <div
-                role="alert"
-                className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-              >
-                {modalError}
-              </div>
-            )}
-
-            <form onSubmit={handleModalEmailLogin} className="space-y-4">
-              <div>
-                <label className="mb-2 block text-xs font-medium text-[#3f3e3a]">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={modalEmail}
-                  onChange={(e) => setModalEmail(e.target.value)}
-                  autoComplete="email"
-                  className="w-full border border-black/15 bg-transparent px-4 py-3 text-sm outline-none focus:border-[#2b2b28]"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-medium text-[#3f3e3a]">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={modalPassword}
-                  onChange={(e) => setModalPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="w-full border border-black/15 bg-transparent px-4 py-3 text-sm outline-none focus:border-[#2b2b28]"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={modalLoading}
-                className="flex w-full items-center justify-center bg-[#2b2b28] px-5 py-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {modalLoading ? "Signing you in..." : "Sign In"}
-              </button>
-            </form>
-
-            <div className="mt-6 flex items-center gap-3 text-xs text-[#8a8984]">
-              <span className="h-px flex-1 bg-black/10" />
-              or
-              <span className="h-px flex-1 bg-black/10" />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleModalGoogleLogin}
-              disabled={modalLoading}
-              className="mt-6 flex w-full items-center justify-center gap-3 border border-black/20 bg-white px-5 py-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {modalLoading ? "Signing you in..." : "Continue with Google"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push("/products")}
-              className="mt-5 w-full text-center text-xs underline text-[#6b6a65]"
-            >
-              Cancel and go back
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="mb-10">
-        <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#6b6a65]">
-          Secure Checkout
-        </p>
-
-        <h1 className="text-3xl font-medium sm:text-4xl">
-          Complete your order
-        </h1>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-10 lg:grid-cols-[1fr_420px]"
-      >
-        <div className="space-y-8">
-          <section className="border border-black/10 bg-white/30 p-6 sm:p-8">
-            <div className="mb-7 flex items-center gap-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2b2b28] text-xs text-white">
-                1
-              </span>
-
-              <h2 className="text-xl font-medium">Contact details</h2>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <CheckoutInput
-                label="Full name"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                autoComplete="name"
-              />
-
-              <CheckoutInput
-                label="Email"
-                name="email"
-                type="email"
-                value={form.email}
-                readOnly
-              />
-
-              <CheckoutInput
-                label="Mobile number"
-                name="phone"
-                type="tel"
-                value={form.phone}
-                onChange={handleChange}
-                autoComplete="tel"
-                inputMode="numeric"
-                placeholder="10-digit mobile number"
-                className="sm:col-span-2"
-              />
-            </div>
-          </section>
-
-          <section className="border border-black/10 bg-white/30 p-6 sm:p-8">
-            <div className="mb-7 flex items-center gap-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2b2b28] text-xs text-white">
-                2
-              </span>
-
-              <h2 className="text-xl font-medium">Delivery address</h2>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <CheckoutInput
-                label="Flat, house number or building"
-                name="addressLine1"
-                value={form.addressLine1}
-                onChange={handleChange}
-                autoComplete="address-line1"
-                className="sm:col-span-2"
-              />
-
-              <CheckoutInput
-                label="Area, landmark or street (optional)"
-                name="addressLine2"
-                value={form.addressLine2}
-                onChange={handleChange}
-                autoComplete="address-line2"
-                required={false}
-                className="sm:col-span-2"
-              />
-
-              <CheckoutInput
-                label="City"
-                name="city"
-                value={form.city}
-                onChange={handleChange}
-                autoComplete="address-level2"
-              />
-
-              <CheckoutInput
-                label="State"
-                name="state"
-                value={form.state}
-                onChange={handleChange}
-                autoComplete="address-level1"
-              />
-
-              <CheckoutInput
-                label="PIN code"
-                name="pincode"
-                value={form.pincode}
-                onChange={handleChange}
-                autoComplete="postal-code"
-                inputMode="numeric"
-              />
-            </div>
-          </section>
-
-          <section className="border border-black/10 bg-white/30 p-6 sm:p-8">
-            <div className="mb-7 flex items-center gap-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2b2b28] text-xs text-white">
-                3
-              </span>
-
-              <h2 className="text-xl font-medium">Payment</h2>
-            </div>
-
-            <label className="flex cursor-pointer items-center gap-4 border border-[#2b2b28] bg-[#f5f3ef] p-5">
-              <input
-                type="radio"
-                name="paymentMethod"
-                value="cod"
-                checked
-                readOnly
-                className="h-4 w-4 accent-[#2b2b28]"
-              />
-
-              <span className="flex-1">
-                <span className="block text-sm font-medium">
-                  Cash on Delivery
-                </span>
-
-                <span className="mt-1 block text-xs text-[#6b6a65]">
-                  Pay safely when your order is delivered.
-                </span>
-              </span>
-
-              <span className="text-xl">₹</span>
-            </label>
-          </section>
-
-          {error && (
-            <div
-              role="alert"
-              className="border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700"
-            >
-              {error}
-            </div>
-          )}
-        </div>
-
-        <aside className="h-fit border border-black/10 bg-[#ebe7df] p-6 lg:sticky lg:top-32">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-xl font-medium">Order summary</h2>
-
-            <Link href="/products" className="text-xs underline underline-offset-4">
-              Continue shopping
-            </Link>
-          </div>
-
-          <div className="max-h-[380px] space-y-5 overflow-y-auto pr-1">
-            {bagItems.map((item) => (
-              <div key={item.id} className="flex gap-4">
-                <div className="relative h-24 w-20 shrink-0 overflow-hidden bg-white">
-                  <Image
-                    src={item.image}
-                    alt={item.name}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                  />
-
-                  <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#2b2b28] px-1 text-[10px] text-white">
-                    {item.quantity}
-                  </span>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-sm font-medium">{item.name}</p>
-
-                  <p className="mt-1 text-xs text-[#6b6a65]">Size: {item.size}</p>
-
-                  <p className="mt-2 text-sm">
-                    {formatPrice(item.price * item.quantity)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-7 space-y-3 border-t border-black/10 pt-5 text-sm">
-            <div className="flex justify-between">
-              <span className="text-[#6b6a65]">Subtotal</span>
-              <span>{formatPrice(subtotal)}</span>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="text-[#6b6a65]">Delivery</span>
-              <span className="font-medium text-green-700">Free</span>
-            </div>
-
-            <div className="flex justify-between border-t border-black/10 pt-4 text-lg font-medium">
-              <span>Total</span>
-              <span>{formatPrice(subtotal)}</span>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-6 flex w-full items-center justify-center bg-[#2b2b28] px-6 py-4 text-sm font-medium text-white transition-all duration-300 hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? (
-              <>
-                <span className="mr-3 h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Placing your order...
-              </>
-            ) : (
-              `Place Order · ${formatPrice(subtotal)}`
-            )}
-          </button>
-
-          <div className="mt-5 space-y-2 text-center text-[11px] text-[#6b6a65]">
-            <p>🔒 Secure authenticated checkout</p>
-            <p>Free delivery · Carefully packed</p>
-          </div>
-        </aside>
-      </form>
-    </main>
-  );
+  async function submit(event) {
+    event.preventDefault();
+    if (submittingRef.current || !quote || quoteLoading) return;
+    if (!user) { router.push("/login?next=/checkout"); return; }
+    submittingRef.current = true; setSubmitting(true); setError("");
+    try {
+      const payload = { name: form.name, phone: form.phone, shippingAddress: { addressLine1: form.addressLine1, addressLine2: form.addressLine2, city: form.city, state: form.state, pincode: form.pincode }, items: bag, paymentOption, offerCode: quote.offerCode, quotedTotal: quote.total };
+      const fingerprint = JSON.stringify(payload);
+      let saved;
+      try { saved = JSON.parse(sessionStorage.getItem("sajawat-checkout") || "null"); } catch {}
+      const checkoutKey = saved?.fingerprint === fingerprint ? saved.key : crypto.randomUUID();
+      sessionStorage.setItem("sajawat-checkout", JSON.stringify({ key: checkoutKey, fingerprint }));
+      const data = await clientApi("/api/payments/create", { method: "POST", body: JSON.stringify({ ...payload, checkoutKey }) });
+      sessionStorage.setItem("sajawat-pending-payment", data.cashfreeOrderId);
+      if (data.confirmed) { router.push("/payment-return?cf_order_id=" + encodeURIComponent(data.cashfreeOrderId)); return; }
+      const { load } = await import("@cashfreepayments/cashfree-js");
+      const cashfree = await load({ mode: data.cashfreeMode });
+      if (!cashfree) throw new Error("Payment checkout could not load. Check your connection and try again.");
+      const result = await cashfree.checkout({ paymentSessionId: data.paymentSessionId, redirectTarget: "_self" });
+      if (result?.error) throw new Error(result.error.message || "Payment checkout could not open.");
+      if (result?.paymentDetails) router.push("/payment-return?cf_order_id=" + encodeURIComponent(data.cashfreeOrderId));
+    } catch (error) {
+      if (error.status === 401) setUser(null);
+      if (error.status === 409) { sessionStorage.removeItem("sajawat-checkout"); await loadQuote(bag, quote.offerCode); }
+      const message = error.name === "TimeoutError" ? "The payment service took too long. Retry to resume the same checkout." : error.message;
+      setError(message); toast(message, "error");
+    } finally { submittingRef.current = false; setSubmitting(false); }
+  }
+  if (checking) return <div className="flex min-h-[65vh] flex-col items-center justify-center gap-4" role="status"><span className="spinner" /><p className="text-sm text-[#78846e]">Preparing your secure checkout…</p></div>;
+  return <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8"><p className="mb-3 text-xs uppercase tracking-[.25em] text-[#819172]">One step closer to a beautiful home</p><h1 className="mb-9 text-3xl font-medium">Checkout</h1>
+    {!user && <div className="mb-6 rounded-xl border border-[#dce5d3] bg-[#ecf1e5] p-5 text-sm">Sign in to securely place your order. <Link className="ml-2 font-medium underline" href="/login?next=/checkout">Sign in →</Link></div>}
+    {error && <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} {!quote && <button type="button" className="ml-3 underline" onClick={() => loadQuote(bag)}>Retry</button>}</div>}
+    <form onSubmit={submit} className="grid gap-8 lg:grid-cols-[1.3fr_1fr]"><fieldset disabled={submitting} className="space-y-8">
+      <section className="checkout-section"><h2><span>1</span>Contact details</h2><div className="grid gap-5 sm:grid-cols-2"><Field label="Full name" name="name" form={form} change={change} autoComplete="name" minLength={2} /><Field label="Email" name="email" form={form} change={change} type="email" autoComplete="email" readOnly /><Field label="Mobile number" name="phone" form={form} change={change} type="tel" autoComplete="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10} placeholder="10-digit Indian mobile number" /></div></section>
+      <section className="checkout-section"><h2><span>2</span>Delivery address</h2><div className="grid gap-5 sm:grid-cols-2"><Field label="Flat, house number or building" name="addressLine1" form={form} change={change} autoComplete="address-line1" wide /><Field label="Area, street or landmark (optional)" name="addressLine2" form={form} change={change} autoComplete="address-line2" required={false} wide /><Field label="City" name="city" form={form} change={change} autoComplete="address-level2" /><Field label="State" name="state" form={form} change={change} autoComplete="address-level1" /><Field label="PIN code" name="pincode" form={form} change={change} autoComplete="postal-code" inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} /></div></section>
+      <section className="checkout-section"><h2><span>3</span>Payment</h2>{[["advance_99", "Pay " + money(advance) + " now", total > advance ? "Pay the remaining " + money(total - advance) + " on delivery." : "Your full order amount will be paid."], ["pay_now", "Pay full amount now", "Pay " + money(total) + " securely with Cashfree."]].map(([value, title, description]) => <label key={value} className={"payment-choice " + (paymentOption === value ? "selected" : "")}><input type="radio" name="paymentOption" value={value} checked={paymentOption === value} onChange={() => setPaymentOption(value)} /><span><strong>{title}</strong><small>{description}</small></span></label>)}</section>
+    </fieldset><aside className="h-fit rounded-2xl border border-[#e0e5d8] bg-[#edf0e6] p-6 lg:sticky lg:top-28"><div className="mb-6 flex items-center justify-between"><h2 className="text-xl">Order summary</h2><Link href="/products" className="text-xs underline">Keep shopping</Link></div><div className="max-h-80 space-y-5 overflow-y-auto">{quote?.items.map((item, index) => <div className="flex gap-4" key={index}><div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-white"><Image src={item.image} alt={item.name} fill sizes="80px" className="object-cover" /></div><div><p className="text-sm font-medium">{item.name}</p><p className="my-2 text-xs text-[#829071]">{item.size} · Qty {item.quantity}</p><p className="text-sm">{money(item.total)}</p></div></div>)}</div>
+      <StoreOffers onApply={code => { if (submitting) return; setOfferCode(code); loadQuote(bag, code); }} /><div className="my-5 flex gap-2"><input aria-label="Offer code" disabled={submitting} value={offerCode} onChange={event => setOfferCode(event.target.value.toUpperCase())} maxLength={30} placeholder="Have an offer code?" className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-3 py-2 text-xs" /><button type="button" disabled={quoteLoading || submitting} onClick={() => loadQuote(bag, offerCode)} className="rounded-lg border border-[#9bab8a] px-4 py-2 text-xs">{quoteLoading ? "Applying…" : "Apply"}</button></div>
+      {quote?.offerCode && <p className="mb-4 text-xs text-[#54713e]">{quote.offerCode} applied <button type="button" className="ml-2 underline" disabled={quoteLoading || submitting} onClick={() => { setOfferCode(""); loadQuote(bag); }}>Remove</button></p>}
+      <dl className="space-y-3 border-t border-black/10 pt-5 text-sm">{[["Subtotal", money(quote?.subtotal)], ["Discount", "−" + money(quote?.discount)], ["Delivery", "Free"], ["Total", money(total)], ["Payable now", money(payable)], ...(balance > 0 ? [["Balance on delivery", money(balance)]] : [])].map(([key, value]) => <div key={key} className="flex justify-between gap-4"><dt>{key}</dt><dd className="font-medium">{value}</dd></div>)}</dl><button type={user ? "submit" : "button"} onClick={user ? undefined : () => router.push("/login?next=/checkout")} disabled={submitting || quoteLoading || !quote || total <= 0} className="mt-7 flex w-full items-center justify-center gap-3 rounded-lg bg-[#314b38] px-6 py-4 text-sm text-white transition hover:bg-[#223728] disabled:opacity-50">{submitting ? <><span className="spinner" /> Opening secure payment…</> : (user ? "Continue to pay · " + money(payable) : "Sign in to continue")}</button><p className="mt-4 text-center text-[11px] text-[#839173]">Secure payments powered by Cashfree.<br />Your order is confirmed after payment verification.</p></aside></form></div>;
 }
-
-function CheckoutInput({
-  label,
-  name,
-  type = "text",
-  value,
-  onChange,
-  required = true,
-  className = "",
-  ...props
-}) {
-  return (
-    <div className={className}>
-      <label
-        htmlFor={name}
-        className="mb-2 block text-xs font-medium text-[#3f3e3a]"
-      >
-        {label}
-      </label>
-
-      <input
-        id={name}
-        name={name}
-        type={type}
-        value={value}
-        onChange={onChange}
-        required={required}
-        className="w-full border border-black/15 bg-transparent px-4 py-3 text-sm outline-none transition-colors placeholder:text-[#a9a7a1] focus:border-[#2b2b28] read-only:cursor-not-allowed read-only:bg-black/[0.03]"
-        {...props}
-      />
-    </div>
-  );
-}
+function Field({ label, name, form, change, wide, required = true, ...props }) { return <label className={"flex flex-col gap-2 text-xs text-[#6e7c62] " + (wide ? "sm:col-span-2" : "")}>{label}<input name={name} value={form[name]} onChange={change} required={required} maxLength={150} {...props} className="w-full rounded-lg border border-[#dce2d5] bg-white px-4 py-3 text-sm text-[#2e4225] outline-none transition focus:border-[#76915f] focus:ring-2 focus:ring-[#dfe9d4] read-only:bg-black/5" /></label>; }

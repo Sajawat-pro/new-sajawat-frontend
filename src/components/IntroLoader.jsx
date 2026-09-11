@@ -6,6 +6,19 @@ export default function IntroLoader() {
   const [visible, setVisible] = useState(true);
   const [textPosition, setTextPosition] = useState("above");
   const [fading, setFading] = useState(false);
+  const [viewHeight, setViewHeight] = useState(600);
+
+  useEffect(() => {
+    const updateViewBox = () => {
+      const ratio = window.innerHeight / window.innerWidth;
+      setViewHeight(ratio * 1000);
+    };
+
+    updateViewBox();
+    window.addEventListener("resize", updateViewBox);
+
+    return () => window.removeEventListener("resize", updateViewBox);
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -79,7 +92,7 @@ export default function IntroLoader() {
     >
       <svg
         className="h-full w-full"
-        viewBox="0 0 1000 600"
+        viewBox={`0 0 1000 ${viewHeight}`}
         preserveAspectRatio="xMidYMid slice"
         aria-label="Sajawat loading"
       >
@@ -90,21 +103,21 @@ export default function IntroLoader() {
             x="0"
             y="0"
             width="1000"
-            height="600"
+            height={viewHeight}
           >
             {/* Visible black overlay */}
             <rect
               x="0"
               y="0"
               width="1000"
-              height="600"
+              height={viewHeight}
               fill="white"
             />
 
             {/* Transparent text cutout */}
             <text
               x="500"
-              y="310"
+              y={viewHeight / 2}
               textAnchor="middle"
               dominantBaseline="middle"
               fill="black"
@@ -134,7 +147,7 @@ export default function IntroLoader() {
           x="0"
           y="0"
           width="1000"
-          height="600"
+          height={viewHeight}
           fill="#000000"
           mask="url(#sajawat-transparent-mask)"
         />

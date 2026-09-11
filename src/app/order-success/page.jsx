@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/getSessionUser";
+import Order from "@/models/Order";
 
 export default async function OrderSuccessPage({ searchParams }) {
   const parameters = await searchParams;
   const orderNumber = parameters?.order || "";
+  const user = await getSessionUser();
+  if (!user) redirect("/login?next=/profile");
+  const order = await Order.findOne({ orderNumber, userId: user.id }).lean();
+  if (!order || ["payment_pending", "cancelled"].includes(order.orderStatus)) redirect("/profile");
 
   return (
     <main className="flex min-h-[70vh] items-center justify-center px-6 py-20">

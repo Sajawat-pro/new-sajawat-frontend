@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { assertSameOrigin, apiError } from "@/lib/http";
 
-export async function POST() {
+export async function POST(request) {
+  try { assertSameOrigin(request); } catch (error) { return apiError(error); }
   const response = NextResponse.json({
     message: "Logged out successfully.",
   });

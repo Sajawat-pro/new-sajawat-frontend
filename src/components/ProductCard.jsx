@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/MediaImage";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -11,13 +11,13 @@ export default function ProductCard({ product }) {
   const images = product.images || [];
 
   useEffect(() => {
-    if (!isHovered || images.length <= 1) return;
+    if (!isHovered || images.length <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const sliderInterval = setInterval(() => {
       setCurrentImageIndex((currentIndex) => {
         return (currentIndex + 1) % images.length;
       });
-    }, 1000);
+    }, 2400);
 
     return () => {
       clearInterval(sliderInterval);
@@ -60,13 +60,13 @@ export default function ProductCard({ product }) {
               key={`${product.id}-${index}`}
               className="relative h-full min-w-full"
             >
-              <Image
+              {Math.abs(index - currentImageIndex) <= 1 && <Image
                 src={image}
                 alt={`${product.name} - View ${index + 1}`}
                 fill
                 sizes="(max-width: 640px) 50vw, 25vw"
                 className="object-cover"
-              />
+              />}
             </div>
           ))}
         </div>
