@@ -6,7 +6,7 @@ import connectMongoDB from "@/lib/mongodb";
 export async function quoteCheckout(body) {
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 50) throw new HttpError(400, "Please select between 1 and 50 items.");
   await connectMongoDB();
-  const products = await Product.find({ id: { $in: body.items.map(item => cleanText(item?.productId, 100)) }, active: true }).lean();
+  const products = await Product.find({ id: { $in: body.items.map(item => cleanText(item?.productId, 100)) } }).lean();
   const items = [];
   const quantities = new Map();
   for (const item of body.items) {
