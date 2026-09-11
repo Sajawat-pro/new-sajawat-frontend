@@ -26,4 +26,11 @@ function getFirebaseAdminApp() {
   });
 }
 
-export const adminAuth = getAuth(getFirebaseAdminApp());
+// Initialise only when authentication is used, so builds do not need live secrets.
+export const adminAuth = new Proxy({}, {
+  get(_target, property) {
+    const auth = getAuth(getFirebaseAdminApp());
+    const value = auth[property];
+    return typeof value === "function" ? value.bind(auth) : value;
+  },
+});

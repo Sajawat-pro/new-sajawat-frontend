@@ -33,6 +33,7 @@ export async function getSessionUser() {
       name: user.name,
       email: user.email,
       image: user.image || "",
+      emailVerified: decodedToken.email_verified === true,
     };
   } catch {
     return null;
