@@ -1,32 +1,20 @@
-import {
-  Geist,
-  Geist_Mono,
-  Roboto_Condensed,
-} from "next/font/google";
+import localFont from "next/font/local";
 
 import "./globals.css";
 
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import StoreShell from "@/components/StoreShell";
+import ToastProvider from "@/components/ToastProvider";
 import IntroLoader from "@/components/IntroLoader";
-import ScrollEffects from "@/components/ScrollEffects";
 
-const geistSans = Geist({
+const geistSans = localFont({
+  src: "../../node_modules/next/dist/next-devtools/server/font/geist-latin.woff2",
   variable: "--font-main",
-  subsets: ["latin"],
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "../../node_modules/next/dist/next-devtools/server/font/geist-mono-latin.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const introFont = Roboto_Condensed({
-  variable: "--font-intro",
-  subsets: ["latin"],
-  weight: ["100", "200", "300"],
   display: "swap",
 });
 
@@ -40,20 +28,11 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${introFont.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#f5f3ef] text-[#2b2b28]">
-        {/* Detects active scrolling for the scrollbar animation */}
-        <ScrollEffects />
-
-        {/* Animated transparent intro screen */}
         <IntroLoader />
-
-        <Header />
-
-        <main className="flex-1">{children}</main>
-
-        <Footer />
+        <ToastProvider><StoreShell>{children}</StoreShell></ToastProvider>
       </body>
     </html>
   );

@@ -1,43 +1,17 @@
-import Image from "next/image";
+import Image from "@/components/MediaImage";
+import HeroVideo from "@/components/HeroVideo";
+import StoreOffers from "@/components/StoreOffers";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
-import { products } from "@/data/products";
+import { getProducts } from "@/lib/catalog";
+export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
+  const products = await getProducts();
   const favorites = products.slice(0, 4);
-  const newArrivals = products.slice(4, 8);
+  const newArrivals = products.slice(0, 4);
 
-  const woodenFrames = products.filter(
-    (product) => product.collection === "Wooden"
-  );
-
-  const metalFrames = products.filter(
-    (product) => product.collection === "Metal"
-  );
-
-  const testimonials = [
-    {
-      quote:
-        "The frame completely changed the look of my living room. It looks elegant, unique and much more premium in person.",
-      name: "Priya S.",
-      product: "3D Plant Frame",
-      image: "/images/testimonials/testimonial-1.png",
-    },
-    {
-      quote:
-        "The detailing is beautiful and the packaging was very secure. It was ready to place on the wall immediately.",
-      name: "Aarav M.",
-      product: "Wooden Décor Frame",
-      image: "/images/testimonials/testimonial-2.png",
-    },
-    {
-      quote:
-        "I wanted something different for an empty wall, and this frame was exactly what the space needed.",
-      name: "Neha R.",
-      product: "LED Plant Frame",
-      image: "/images/testimonials/testimonial-3.png",
-    },
-  ];
+  const collections = [...new Set(products.map(product => product.collection).filter(Boolean))];
 
   const highlights = [
     "Thoughtfully Designed",
@@ -50,15 +24,7 @@ export default function Home() {
     <div>
       {/* Hero */}
       <section className="relative h-[85vh] min-h-[500px] w-full overflow-hidden bg-[#e9e6df]">
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          poster="/images/hero/hero-poster.jpg"
-          src="/videos/hero.mp4"
-          autoPlay
-          muted
-          loop
-          playsInline
-        />
+        <HeroVideo />
 
         {/* 40% black video overlay */}
         <div className="absolute inset-0 z-10 bg-black/40" />
@@ -66,7 +32,7 @@ export default function Home() {
         {/* Hero content */}
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-end px-6 pb-16 text-center text-white">
           <p className="mb-3 text-xs font-medium uppercase tracking-[0.3em] sm:text-sm">
-            Brand Opening Sale Is Live
+            Thoughtfully made for your home
           </p>
 
           <h1 className="mb-4 max-w-4xl text-4xl font-medium leading-tight sm:text-6xl">
@@ -173,7 +139,7 @@ export default function Home() {
 
           <div className="relative order-1 aspect-video w-full overflow-hidden bg-[#e9e6df] sm:order-2">
             <Image
-              src="/images/home/new-arrivals.jpg"
+              src="/images/signature-box.png"
               alt="New Sajawat wall frame arrivals"
               fill
               sizes="(max-width: 640px) 100vw, 50vw"
@@ -203,93 +169,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Wooden Collection */}
-      <section id="collections" className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mb-8 flex items-end justify-between gap-6">
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#6b6a65]">
-              Natural and Timeless
-            </p>
-
-            <h2 className="text-3xl font-medium">The Wooden Collection</h2>
-          </div>
-
-          <Link
-            href="/products?collection=Wooden"
-            className="shrink-0 border-b border-[#2b2b28] pb-1 text-sm"
-          >
-            Shop All
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-          {woodenFrames.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
-
-      {/* Metal Collection */}
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mb-8 flex items-end justify-between gap-6">
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-[0.25em] text-[#6b6a65]">
-              Modern and Refined
-            </p>
-
-            <h2 className="text-3xl font-medium">The Metal Collection</h2>
-          </div>
-
-          <Link
-            href="/products?collection=Metal"
-            className="shrink-0 border-b border-[#2b2b28] pb-1 text-sm"
-          >
-            Shop All
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-          {metalFrames.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mb-12 text-center">
-          <p className="mb-3 text-xs uppercase tracking-[0.25em] text-[#6b6a65]">
-            Sajawat in Your Homes
-          </p>
-
-          <h2 className="text-3xl font-medium">Loved in Every Corner</h2>
-        </div>
-
-        <div className="grid gap-8 sm:grid-cols-3">
-          {testimonials.map((testimonial, index) => (
-            <div key={index}>
-              <div className="relative mb-5 aspect-[4/5] w-full overflow-hidden bg-[#e9e6df]">
-                <Image
-                  src={testimonial.image}
-                  alt={`${testimonial.product} purchased by ${testimonial.name}`}
-                  fill
-                  sizes="(max-width: 640px) 100vw, 33vw"
-                  className="object-cover transition-transform duration-700 hover:scale-105"
-                />
-              </div>
-
-              <p className="mb-3 text-sm leading-relaxed">
-                &ldquo;{testimonial.quote}&rdquo;
-              </p>
-
-              <p className="text-xs uppercase tracking-wider text-[#6b6a65]">
-                {testimonial.name} — {testimonial.product}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
+      <section id="collections" className="mx-auto max-w-6xl px-6 py-14"><StoreOffers />{collections.map(collection => <div className="mb-14" key={collection}><div className="mb-8 flex items-center justify-between"><h2 className="text-3xl font-medium">{collection}</h2><Link className="text-sm underline" href={"/products?collection=" + encodeURIComponent(collection)}>Shop all</Link></div><div className="grid grid-cols-2 gap-6 sm:grid-cols-4">{products.filter(product => product.collection === collection).slice(0, 4).map(product => <ProductCard key={product.id} product={product} />)}</div></div>)}</section>
       {/* Collection CTA */}
       <section
         id="frame-finder"

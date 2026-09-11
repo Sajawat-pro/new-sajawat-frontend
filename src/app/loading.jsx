@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="mx-auto max-w-6xl px-6 py-20" role="status" aria-label="Loading page"><div className="mb-10 h-9 w-64 animate-pulse rounded bg-black/5" /><div className="grid grid-cols-2 gap-6 md:grid-cols-4">{[1,2,3,4].map(item => <div key={item} className="aspect-[3/4] animate-pulse rounded bg-black/5" />)}</div></div>; }
