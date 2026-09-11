@@ -9,6 +9,21 @@ import { useToast } from "@/components/ToastProvider";
 
 const money = value => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(value || 0));
 const bagKey = "sajawat-bag";
+
+function sanitizeBagItems(stored) {
+  const valid = [];
+  const invalidNames = [];
+  stored.forEach(item => {
+    const size = item.size;
+    if (!size || typeof size !== "string" || !size.trim()) {
+      invalidNames.push(item.name || item.productId || item.id || "An item");
+      return;
+    }
+    valid.push({ productId: item.productId || String(item.id).split("-")[0], size, quantity: Number(item.quantity) || 1 });
+  });
+  return { valid, invalidNames };
+}
+
 export default function CheckoutPage() {
   const router = useRouter(), toast = useToast(), submittingRef = useRef(false);
   const [checking, setChecking] = useState(true), [submitting, setSubmitting] = useState(false);
@@ -33,12 +48,21 @@ export default function CheckoutPage() {
     let active = true;
     async function initialise() {
       try {
-        const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
-        if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
-        const items = stored.map(item => ({ productId: item.productId || String(item.id).split("-")[0], size: item.size, quantity: Number(item.quantity) }));
-        if (!active) return;
-        setBag(items);
-        await loadQuote(items);
+       const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
+if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
+const { valid: items, invalidNames } = sanitizeBagItems(stored);
+if (!items.length) {
+  localStorage.removeItem(bagKey);
+  router.replace("/products");
+  return;
+}
+if (invalidNames.length) {
+  localStorage.setItem(bagKey, JSON.stringify(stored.filter(item => item.size && typeof item.size === "string" && item.size.trim())));
+  toast(invalidNames.join(", ") + " had no size selected and was removed from your bag.", "error");
+}
+if (!active) return;
+setBag(items);
+await loadQuote(items);
         try {
           const result = await clientApi("/api/auth/me");
           if (!active) return;
@@ -55,10 +79,19 @@ export default function CheckoutPage() {
     function syncBag() {
       if (submittingRef.current) return;
       try {
-        const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
-        if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
-        const items = stored.map(item => ({ productId: item.productId || String(item.id).split("-")[0], size: item.size, quantity: Number(item.quantity) }));
-        setBag(items); loadQuote(items, quote?.offerCode || "");
+const stored = JSON.parse(localStorage.getItem(bagKey) || "[]");
+if (!Array.isArray(stored) || !stored.length) { router.replace("/products"); return; }
+const { valid: items, invalidNames } = sanitizeBagItems(stored);
+if (!items.length) {
+  localStorage.removeItem(bagKey);
+  router.replace("/products");
+  return;
+}
+if (invalidNames.length) {
+  localStorage.setItem(bagKey, JSON.stringify(stored.filter(item => item.size && typeof item.size === "string" && item.size.trim())));
+  toast(invalidNames.join(", ") + " had no size selected and was removed from your bag.", "error");
+}
+setBag(items); loadQuote(items, quote?.offerCode || "");
       } catch { setError("Your bag could not be read. Please reload checkout."); }
     }
     const storage = event => { if (event.key === bagKey) syncBag(); };
@@ -104,8 +137,17 @@ export default function CheckoutPage() {
   }
   if (checking) return <div className="flex min-h-[65vh] flex-col items-center justify-center gap-4" role="status"><span className="spinner" /><p className="text-sm text-[#78846e]">Preparing your secure checkout…</p></div>;
   return <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8"><p className="mb-3 text-xs uppercase tracking-[.25em] text-[#819172]">One step closer to a beautiful home</p><h1 className="mb-9 text-3xl font-medium">Checkout</h1>
-    {!user && <div className="mb-6 rounded-xl border border-[#dce5d3] bg-[#ecf1e5] p-5 text-sm">Sign in to securely place your order. <Link className="ml-2 font-medium underline" href="/login?next=/checkout">Sign in →</Link></div>}
-    {error && <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} {!quote && <button type="button" className="ml-3 underline" onClick={() => loadQuote(bag)}>Retry</button>}</div>}
+    {!checking && !user && (
+  <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 px-5">
+    <div className="w-full max-w-sm rounded-2xl bg-white p-7 text-center shadow-xl">
+      <h2 className="mb-2 text-lg font-medium">Sign in to continue</h2>
+      <p className="mb-6 text-sm text-[#6e7c62]">Please sign in to your account to securely place this order.</p>
+      <Link href="/login?next=/checkout" className="mb-3 block w-full rounded-lg bg-[#314b38] px-6 py-3 text-sm text-white transition hover:bg-[#223728]">Sign in</Link>
+      <Link href="/products" className="block w-full text-xs underline text-[#6e7c62]">Continue shopping instead</Link>
+    </div>
+  </div>
+)}
+    {error && <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} {!quote && <button type="button" className="ml-3 underline" onClick={() => window.location.reload()}>Reload</button>}</div>}
     <form onSubmit={submit} className="grid gap-8 lg:grid-cols-[1.3fr_1fr]"><fieldset disabled={submitting} className="space-y-8">
       <section className="checkout-section"><h2><span>1</span>Contact details</h2><div className="grid gap-5 sm:grid-cols-2"><Field label="Full name" name="name" form={form} change={change} autoComplete="name" minLength={2} /><Field label="Email" name="email" form={form} change={change} type="email" autoComplete="email" readOnly /><Field label="Mobile number" name="phone" form={form} change={change} type="tel" autoComplete="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10} placeholder="10-digit Indian mobile number" /></div></section>
       <section className="checkout-section"><h2><span>2</span>Delivery address</h2><div className="grid gap-5 sm:grid-cols-2"><Field label="Flat, house number or building" name="addressLine1" form={form} change={change} autoComplete="address-line1" wide /><Field label="Area, street or landmark (optional)" name="addressLine2" form={form} change={change} autoComplete="address-line2" required={false} wide /><Field label="City" name="city" form={form} change={change} autoComplete="address-level2" /><Field label="State" name="state" form={form} change={change} autoComplete="address-level1" /><Field label="PIN code" name="pincode" form={form} change={change} autoComplete="postal-code" inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} /></div></section>
